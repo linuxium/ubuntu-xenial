@@ -583,6 +583,7 @@ ifeq ($(do_any_tools),true)
 	rm -rf $(builddirpa)
 	install -d $(builddirpa)
 	rsync -a --exclude debian --exclude debian.master --exclude $(DEBIAN) --exclude .git -a ./ $(builddirpa)/
+	cp ./include/uapi/linux/usbip.h ./debian/build/tools-perarch/tools/usb/usbip/libsrc
 endif
 	touch $@
 
