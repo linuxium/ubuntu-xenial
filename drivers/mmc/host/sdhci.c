@@ -736,6 +736,45 @@ static void sdhci_set_timeout(struct sdhci_host *host, struct mmc_command *cmd)
 	}
 }
 
+static bool sdhci_pm_qos_use_dma_latency(struct sdhci_host *host)
+{
+	return host->dma_latency != PM_QOS_DEFAULT_VALUE;
+}
+
+static void sdhci_pm_qos_set_dma_latency(struct sdhci_host *host,
+					 struct mmc_request *mrq)
+{
+	if (sdhci_pm_qos_use_dma_latency(host) && mrq->data &&
+	    (host->flags & (SDHCI_USE_SDMA | SDHCI_USE_ADMA))) {
+		pm_qos_update_request(&host->pm_qos_req, host->dma_latency);
+		host->pm_qos_set = true;
+	}
+}
+
+static void sdhci_pm_qos_unset(struct sdhci_host *host)
+{
+	unsigned int delay;
+
+	if (host->pm_qos_set) {
+		host->pm_qos_set = false;
+		delay = host->consecutive_req ? host->lat_cancel_delay : 0;
+		pm_qos_cancel_request_lazy(&host->pm_qos_req, delay);
+	}
+}
+
+static void sdhci_pm_qos_add(struct sdhci_host *host)
+{
+	if (sdhci_pm_qos_use_dma_latency(host))
+		pm_qos_add_request(&host->pm_qos_req, PM_QOS_CPU_DMA_LATENCY,
+				   PM_QOS_DEFAULT_VALUE);
+}
+
+static void sdhci_pm_qos_remove(struct sdhci_host *host)
+{
+	if (pm_qos_request_active(&host->pm_qos_req))
+		pm_qos_remove_request(&host->pm_qos_req);
+}
+
 static void sdhci_prepare_data(struct sdhci_host *host, struct mmc_command *cmd)
 {
 	u8 ctrl;
@@ -1379,6 +1418,8 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 	sdhci_runtime_pm_get(host);
 
+	sdhci_pm_qos_set_dma_latency(host, mrq);
+
 	/* Firstly check card presence */
 	present = mmc->ops->get_cd(mmc);
 
@@ -1402,6 +1443,7 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	}
 
 	host->mrq = mrq;
+	host->consecutive_req = 0;
 
 	if (!present || host->flags & SDHCI_DEVICE_DEAD) {
 		host->mrq->cmd->error = -ENOMEDIUM;
@@ -1747,7 +1789,8 @@ static void sdhci_enable_sdio_irq(struct mmc_host *mmc, int enable)
 	struct sdhci_host *host = mmc_priv(mmc);
 	unsigned long flags;
 
-	sdhci_runtime_pm_get(host);
+	if (enable)
+		sdhci_runtime_pm_get(host);
 
 	spin_lock_irqsave(&host->lock, flags);
 	if (enable)
@@ -1758,7 +1801,8 @@ static void sdhci_enable_sdio_irq(struct mmc_host *mmc, int enable)
 	sdhci_enable_sdio_irq_nolock(host, enable);
 	spin_unlock_irqrestore(&host->lock, flags);
 
-	sdhci_runtime_pm_put(host);
+	if (!enable)
+		sdhci_runtime_pm_put(host);
 }
 
 static int sdhci_do_start_signal_voltage_switch(struct sdhci_host *host,
@@ -2179,7 +2223,12 @@ static void sdhci_pre_req(struct mmc_host *mmc, struct mmc_request *mrq,
 {
 	struct sdhci_host *host = mmc_priv(mmc);
 
-	mrq->data->host_cookie = COOKIE_UNMAPPED;
+	host->consecutive_req = 1;
+
+	if (mrq->data->host_cookie) {
+		mrq->data->host_cookie = COOKIE_UNMAPPED;
+		return;
+	}
 
 	if (host->flags & SDHCI_REQ_USE_DMA)
 		sdhci_pre_dma_transfer(host, mrq->data);
@@ -2246,6 +2295,8 @@ static void sdhci_tasklet_finish(unsigned long param)
 	struct mmc_request *mrq;
 
 	host = (struct sdhci_host*)param;
+
+	sdhci_pm_qos_unset(host);
 
 	spin_lock_irqsave(&host->lock, flags);
 
@@ -2878,6 +2929,8 @@ struct sdhci_host *sdhci_alloc_host(struct device *dev,
 	host = mmc_priv(mmc);
 	host->mmc = mmc;
 	host->mmc_host_ops = sdhci_ops;
+	host->dma_latency = PM_QOS_DEFAULT_VALUE;
+
 	mmc->ops = &host->mmc_host_ops;
 
 	return host;
@@ -3366,6 +3419,8 @@ int sdhci_add_host(struct sdhci_host *host)
 	 */
 	mmc->max_blk_count = (host->quirks & SDHCI_QUIRK_NO_MULTIBLOCK) ? 1 : 65535;
 
+	sdhci_pm_qos_add(host);
+
 	/*
 	 * Init tasklets.
 	 */
@@ -3429,6 +3484,7 @@ reset:
 #endif
 untasklet:
 	tasklet_kill(&host->finish_tasklet);
+	sdhci_pm_qos_remove(host);
 
 	return ret;
 }
@@ -3485,6 +3541,8 @@ void sdhci_remove_host(struct sdhci_host *host, int dead)
 
 	host->adma_table = NULL;
 	host->align_buffer = NULL;
+
+	sdhci_pm_qos_remove(host);
 }
 
 EXPORT_SYMBOL_GPL(sdhci_remove_host);
