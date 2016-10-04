@@ -133,7 +133,7 @@ ifeq ($(do_tools_common),true)
 	install -m755 debian/cloud-tools/hv_set_ifconfig $(cloudsbin)
 
 	install -d $(cloudman)/man8
-	install -m644 $(CURDIR)/tools/hv/*.8 $(cloudman)/man8
+	#install -m644 $(CURDIR)/tools/hv/*.8 $(cloudman)/man8
 
 endif
 
