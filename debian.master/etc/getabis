@@ -10,7 +10,7 @@ package_prefixes linux-image linux-image-extra
 
 getall armhf generic
 getall armhf generic-lpae
-getall amd64 generic lowlatency
+getall amd64 generic lowlatency linuxium
 getall i386 generic lowlatency
 getall arm64 generic
 getall ppc64el generic
