@@ -1,9 +1,3 @@
-linux (4.4.0-45.66+IntelAtom) xenial; urgency=medium
-
-  * Patched with Intel Atom HDMI audio, wifi, bt
-
- -- Ian W. Morrison (Linuxium) <ianwmorrison@gmail.com>  Tue, 25 Oct 2016 14:07:09 +1100
-
 linux (4.4.0-45.66) xenial; urgency=low
 
   * CVE-2016-5195
