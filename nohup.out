@@ -1,0 +1,4 @@
+From git://kernel.ubuntu.com/ubuntu/ubuntu-xenial
+ * tag               Ubuntu-4.4.0-45.66 -> FETCH_HEAD
+error: Trying to write non-commit object 62163505da136453a3f5ea47ab7090956009f718 to branch refs/heads/Ubuntu-4.4.0-45.66
+fatal: Cannot update the ref 'HEAD'.
